@@ -331,6 +331,10 @@ window.MercatorSSO = function() {
 	document.body.style.display='none';
 	window.location = '<?php echo addslashes( esc_js( $url ) ); ?>&fragment='+encodeURIComponent(document.location.hash);
 };
+
+if ('MercatorReady' in window) {
+	window.MercatorReady();
+}
 <?php
 
 	exit;
@@ -355,17 +359,19 @@ function head_js() {
 
 	$script_url = get_action_url( ACTION_JS, $args );
 ?>
-	<script src="<?php echo esc_url( $script_url ); ?>"></script>
 	<script type="text/javascript">
 		/* <![CDATA[ */
-			if ( 'function' === typeof MercatorSSO ) {
-				document.cookie = "<?php echo esc_js( TEST_COOKIE ); ?>=WP Cookie check; path=/";
-				if ( document.cookie.match( /(;|^)\s*<?php echo esc_js( TEST_COOKIE ); ?>\=/ ) ) {
-					MercatorSSO();
+			window.MercatorReady = function() {
+				if ( 'function' === typeof MercatorSSO ) {
+					document.cookie = "<?php echo esc_js( TEST_COOKIE ); ?>=WP Cookie check; path=/";
+					if ( document.cookie.match( /(;|^)\s*<?php echo esc_js( TEST_COOKIE ); ?>\=/ ) ) {
+						MercatorSSO();
+					}
 				}
 			}
 		/* ]]> */
 	</script>
+	<script src="<?php echo esc_url( $script_url ); ?>" defer></script>
 <?php
 }
 
