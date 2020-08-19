@@ -61,8 +61,8 @@ function run_preflight() {
 	}
 
 	// Are we running a good version of WP?
-	if ( ! function_exists( 'get_site_by_path' ) ) {
-		warn_with_message( 'Mercator requires <a href="https://wordpress.org/download/">WordPress 3.9</a> or newer. Update now.' );
+	if ( ! function_exists( 'is_wp_version_compatible' ) ) {
+		warn_with_message( 'Mercator requires <a href="https://wordpress.org/download/">WordPress 5.2</a> or newer. Update now.' );
 		return;
 	}
 
