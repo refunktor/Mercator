@@ -61,8 +61,8 @@ function run_preflight() {
 	}
 
 	// Are we running a good version of WP?
-	if ( ! function_exists( 'get_site_by_path' ) ) {
-		warn_with_message( 'Mercator requires <a href="https://wordpress.org/download/">WordPress 3.9</a> or newer. Update now.' );
+	if ( ! function_exists( 'is_wp_version_compatible' ) ) {
+		warn_with_message( 'Mercator requires <a href="https://wordpress.org/download/">WordPress 5.2</a> or newer. Update now.' );
 		return;
 	}
 
@@ -89,7 +89,7 @@ function startup() {
 	// Actually hook in!
 	add_filter( 'pre_get_site_by_path', __NAMESPACE__ . '\\check_domain_mapping', 10, 2 );
 	add_action( 'admin_init', __NAMESPACE__ . '\\load_admin', -100 );
-	add_action( 'delete_blog', __NAMESPACE__ . '\\clear_mappings_on_delete' );
+	add_action( 'wp_delete_site', __NAMESPACE__ . '\\clear_mappings_on_delete' );
 	add_action( 'muplugins_loaded', __NAMESPACE__ . '\\register_mapped_filters', -10 );
 
 	// Add CLI commands
@@ -249,7 +249,9 @@ function load_admin() {
  *
  * @param int $site_id Site being deleted
  */
-function clear_mappings_on_delete( $site_id ) {
+function clear_mappings_on_delete( $site ) {
+	$site_id = $site->blog_id;
+
 	$mappings = Mapping::get_by_site( $site_id );
 
 	if ( empty( $mappings ) ) {
