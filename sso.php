@@ -54,6 +54,41 @@ function run_preflight() {
 	bootstrap();
 }
 
+function manage_sites_action_links($actions, $id) {
+
+	$back = get_admin_url($id, '/');
+	$host = $back;
+	$host = str_replace('http://', '', $host);
+	$host = str_replace('https://', '', $host);
+	$host = str_replace('/wp-admin', '', $host);
+	$host = str_replace('/admin', '', $host);
+	$host = str_replace('/', '', $host);
+
+	$host = preg_replace( '#[^a-z0-9.\-]+#i', '', wp_unslash( $host ) );
+	
+	$site = absint( wp_unslash( $id ) );
+
+	// Verify nonce
+	$nonce_action = 'mercator-sso|' . $site . '|' . $host . '|' . $back;
+
+	$args = array(
+		'host' => $host,
+		'back' => $back,
+		'site' => $site,
+
+		// Recreate nonce, just in case we hit the 12/24 hour boundary
+		'nonce' => create_shared_nonce( $nonce_action ),
+	);
+
+	$url = get_action_url( ACTION_LOGIN, $args );
+
+
+
+	$actions['backend'] = "<a href='" . esc_url( $url ) . "' class='edit'>" . __( 'Dashboard' ) . '</a>';
+
+	return $actions;
+}
+
 /**
  * Attach SSO functions into WordPress.
  */
@@ -66,6 +101,9 @@ function bootstrap() {
 	add_action( 'wp_ajax_nopriv_' . ACTION_JS, __NAMESPACE__ . '\\output_javascript_nopriv' );
 	add_action( 'wp_ajax_' . ACTION_LOGIN, __NAMESPACE__ . '\\handle_login' );
 	add_action( 'wp_ajax_nopriv_' . ACTION_LOGIN, __NAMESPACE__ . '\\handle_login' );
+	
+	// Admin Page
+	add_filter( 'manage_sites_action_links', __NAMESPACE__ . '\\manage_sites_action_links', 10, 2 );
 }
 
 /**
@@ -73,13 +111,14 @@ function bootstrap() {
  */
 function initialize_cookie_domain() {
 	if ( empty( $GLOBALS['mercator_current_mapping'] ) ) {
-		return;
+		$cookie_domain = strtolower( wp_unslash( $_SERVER['HTTP_HOST'] ) );
+	} else {
+		$current_mapping = $GLOBALS['mercator_current_mapping'];
+		$cookie_domain = $current_mapping->get_domain();
+
 	}
 
 	// Do the ms-settings dance, again.
-	$current_mapping = $GLOBALS['mercator_current_mapping'];
-
-	$cookie_domain = $current_mapping->get_domain();
 	if ( substr( $cookie_domain, 0, 4 ) === 'www.' ) {
 		$cookie_domain = substr( $cookie_domain, 4 );
 	}
@@ -249,7 +288,7 @@ function create_shared_nonce( $action ) {
  * Uses nonces not linked to the current user. See {@see create_shared_nonce()}
  * for more about why this exists.
  *
- * @param string     $nonce Nonce that was used in the form to verify
+ * @param string	 $nonce Nonce that was used in the form to verify
  * @param string|int $action Should give context to what is taking place and be the same when nonce was created.
  * @return bool Whether the nonce check passed or failed.
  */
@@ -294,7 +333,7 @@ function output_javascript_nopriv() {
  */
 function output_javascript_priv() {
 	header( 'Content-Type: application/javascript' );
-
+	header( 'x-user-logged-in: ' . (is_user_logged_in() ? '1' : '0') );
 	// Double-check user, in case an enterprising plugin decided to pretend our
 	// action was authenticated
 	if ( ! is_user_logged_in() ) {
@@ -329,8 +368,9 @@ window.MercatorSSO = function() {
 
 	document.write('<body>');
 	document.body.style.display='none';
-	window.location = '<?php echo addslashes( esc_js( $url ) ); ?>&fragment='+encodeURIComponent(document.location.hash);
+	window.location = '<?php echo addslashes( esc_url_raw( $url ) ); ?>&fragment='+encodeURIComponent(document.location.hash);
 };
+MercatorGo();
 <?php
 
 	exit;
@@ -355,17 +395,22 @@ function head_js() {
 
 	$script_url = get_action_url( ACTION_JS, $args );
 ?>
-	<script src="<?php echo esc_url( $script_url ); ?>"></script>
 	<script type="text/javascript">
 		/* <![CDATA[ */
+		function MercatorGo() {
 			if ( 'function' === typeof MercatorSSO ) {
 				document.cookie = "<?php echo esc_js( TEST_COOKIE ); ?>=WP Cookie check; path=/";
 				if ( document.cookie.match( /(;|^)\s*<?php echo esc_js( TEST_COOKIE ); ?>\=/ ) ) {
 					MercatorSSO();
 				}
+			} else {
+				setTimeout(function() { MercatorGo(); }, 1000);
 			}
+		}
 		/* ]]> */
 	</script>
+	<script async type="text/javascript" src="<?php echo esc_url( $script_url ); ?>&<?php echo(md5(time()));?>"></script>
+
 <?php
 }
 
@@ -435,11 +480,11 @@ function handle_login_request() {
  *
  * @param int   $user User ID
  * @param array $args {
- *     Arguments for the login URL
+ *	 Arguments for the login URL
  *
- *     @type string $host Host to authenticate for
- *     @type string $back URL to return to after authentication
- *     @type int $site Site ID to authenticate for, defaults to the current site
+ *	 @type string $host Host to authenticate for
+ *	 @type string $back URL to return to after authentication
+ *	 @type int $site Site ID to authenticate for, defaults to the current site
  * }
  * @return string|WP_Error Login URL for the given domain
  */
@@ -469,7 +514,7 @@ function get_login_url( $user, $args ) {
 
 	$url_args = array(
 		'action' => ACTION_LOGIN,
-		'key'    => $key,
+		'key'	=> $key,
 		'nonce'  => create_shared_nonce( 'mercator-sso-login|' . $key ),
 	);
 	$admin_url = get_admin_url( $args['site'], 'admin-ajax.php', 'relative' );
@@ -503,7 +548,7 @@ function handle_login_response() {
 
 	// Fetch using the token
 	$users = get_users( array(
-		'meta_key'     => 'mercator_sso_' . $args['key'],
+		'meta_key'	 => 'mercator_sso_' . $args['key'],
 
 		// Check that the value exists (WP doesn't support EXISTS, so use a
 		// dummy value that will never match)
@@ -511,7 +556,7 @@ function handle_login_response() {
 		'meta_compare' => '!=',
 
 		// Skip capability check
-		'blog_id'      => 0,
+		'blog_id'	  => 0,
 	) );
 	if ( empty( $users ) ) {
 		status_header( 404 );
